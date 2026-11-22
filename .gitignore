@@ -1,0 +1,5 @@
+# 构建产物
+Gloam.app/
+
+# macOS
+.DS_Store
