@@ -56,7 +56,7 @@ The app bundle is about 1 MB, most of which is the icon.
 ```mermaid
 flowchart LR
     subgraph resident["Resident process"]
-        A["Schedule · appearance · warmth · hotkey<br/>one timer, no polling"]
+        A["Schedule · appearance<br/>warmth · hotkey<br/>one timer, no polling"]
     end
     subgraph ondemand["On demand"]
         S["Settings window<br/>Gloam --settings"]

@@ -53,7 +53,7 @@ Gloam 在日出日落时自动切换 Mac 的浅色和深色外观，阴天可以
 ```mermaid
 flowchart LR
     subgraph resident["常驻进程"]
-        A["日程 · 外观 · 暖色 · 快捷键<br/>一个定时器，不轮询"]
+        A["日程 · 外观<br/>暖色 · 快捷键<br/>一个定时器，不轮询"]
     end
     subgraph ondemand["按需启动"]
         S["设置窗口<br/>Gloam --settings"]
