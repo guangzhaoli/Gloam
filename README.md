@@ -23,6 +23,35 @@ English · [Chinese](README.zh-CN.md)
 
 Gloam switches your Mac between light and dark appearance for you. It can follow the sun, follow fixed times you set, turn dark early when the day is gloomy, warm the screen in the evening, and change the wallpaper to match. It runs quietly in the background and sleeps until the next switch.
 
+## Why Gloam
+
+macOS has a built-in **Auto** appearance, but it works out day and night from what your Mac believes about itself: its clock, its time zone and its location. As long as those match where you really are, it works. Quite often they do not, and then your screen turns dark in the middle of your afternoon, or stays bright deep into the night:
+
+- **Your Mac's time zone is not where you are.** You keep the clock on your home country's or your team's time while living somewhere else, or you travelled and never changed it.
+- **Your Mac does not know where it is.** Location Services are switched off, or the Mac simply cannot get a location. Following the sun is then not available at all.
+- **You live on another place's hours.** You work with a team on the other side of the world and want your screen to follow their day, not the one outside your window.
+- **Sunset is not the moment you want.** You would rather switch a little earlier or later, or at fixed hours.
+
+The built-in feature gives you nothing to correct any of this. There is no place to say where you are, no offset and no schedule of its own: according to [Apple's documentation](https://support.apple.com/102191), Auto simply follows the Night Shift schedule, and the sunset option there needs Location Services.
+
+Gloam separates the three things that macOS ties together, and lets you set each one yourself:
+
+| Question | Built-in Auto | Gloam |
+|---|---|---|
+| **Where** is the sun calculated for? | Wherever macOS thinks the Mac is | Any place you choose: a city, your current location, or coordinates |
+| **Which clock** do the times follow? | The system time zone | Any time zone, without changing the system clock |
+| **When** exactly does it switch? | At sunset and sunrise, nothing else | Sunrise and sunset with offsets, or fixed times of your own |
+
+Some typical setups:
+
+| Your situation | What to set in Gloam |
+|---|---|
+| You live in one place, but your Mac stays on another time zone | **Choose City** → the place you actually live in |
+| You work on another region's hours | **Choose City** → a city in that region. Its time zone is filled in for you |
+| Location Services are off and you want to keep them off | **Choose City**, or type coordinates. No permission is needed |
+| You want dark mode at the same time every day | Mode → **Custom**, then set the two times |
+| Sunset is right, but a bit too late for you | Keep **Sunrise / Sunset** and move the sunset offset earlier |
+
 ## What it does
 
 ### 1. Switches appearance on a schedule
