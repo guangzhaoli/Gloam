@@ -229,7 +229,7 @@ private final class Thumb: NSView {
             button.topAnchor.constraint(equalTo: topAnchor), button.bottomAnchor.constraint(equalTo: bottomAnchor),
             button.leadingAnchor.constraint(equalTo: leadingAnchor), button.trailingAnchor.constraint(equalTo: trailingAnchor),
         ])
-        toolTip = "点击选择图片"
+        toolTip = L("Click to choose an image", "点击选择图片")
         reload()
     }
 
@@ -279,21 +279,26 @@ private final class Thumb: NSView {
     }
 }
 
-/// 常用城市（纬度、经度、时区），省得手填。
-private let cities: [(name: String, lat: Double, lon: Double, zone: String)] = [
-    ("北京", 39.90, 116.40, "Asia/Shanghai"), ("上海", 31.23, 121.47, "Asia/Shanghai"),
-    ("广州", 23.13, 113.26, "Asia/Shanghai"), ("深圳", 22.54, 114.06, "Asia/Shanghai"),
-    ("成都", 30.57, 104.07, "Asia/Shanghai"), ("杭州", 30.27, 120.15, "Asia/Shanghai"),
-    ("武汉", 30.59, 114.31, "Asia/Shanghai"), ("西安", 34.34, 108.94, "Asia/Shanghai"),
-    ("香港", 22.32, 114.17, "Asia/Hong_Kong"), ("台北", 25.03, 121.57, "Asia/Taipei"),
-    ("东京", 35.68, 139.69, "Asia/Tokyo"), ("首尔", 37.57, 126.98, "Asia/Seoul"),
-    ("新加坡", 1.35, 103.82, "Asia/Singapore"), ("悉尼", -33.87, 151.21, "Australia/Sydney"),
-    ("伦敦", 51.51, -0.13, "Europe/London"), ("巴黎", 48.86, 2.35, "Europe/Paris"),
-    ("柏林", 52.52, 13.40, "Europe/Berlin"), ("纽约", 40.71, -74.01, "America/New_York"),
-    ("芝加哥", 41.88, -87.63, "America/Chicago"), ("洛杉矶", 34.05, -118.24, "America/Los_Angeles"),
-    ("旧金山", 37.77, -122.42, "America/Los_Angeles"), ("西雅图", 47.61, -122.33, "America/Los_Angeles"),
-    ("温哥华", 49.28, -123.12, "America/Vancouver"), ("多伦多", 43.65, -79.38, "America/Toronto"),
+/// 常用城市（英文名、中文名、纬度、经度、时区），省得手填。
+private let cities: [(en: String, zh: String, lat: Double, lon: Double, zone: String)] = [
+    ("Beijing", "北京", 39.90, 116.40, "Asia/Shanghai"), ("Shanghai", "上海", 31.23, 121.47, "Asia/Shanghai"),
+    ("Guangzhou", "广州", 23.13, 113.26, "Asia/Shanghai"), ("Shenzhen", "深圳", 22.54, 114.06, "Asia/Shanghai"),
+    ("Chengdu", "成都", 30.57, 104.07, "Asia/Shanghai"), ("Hangzhou", "杭州", 30.27, 120.15, "Asia/Shanghai"),
+    ("Wuhan", "武汉", 30.59, 114.31, "Asia/Shanghai"), ("Xi'an", "西安", 34.34, 108.94, "Asia/Shanghai"),
+    ("Hong Kong", "香港", 22.32, 114.17, "Asia/Hong_Kong"), ("Taipei", "台北", 25.03, 121.57, "Asia/Taipei"),
+    ("Tokyo", "东京", 35.68, 139.69, "Asia/Tokyo"), ("Seoul", "首尔", 37.57, 126.98, "Asia/Seoul"),
+    ("Singapore", "新加坡", 1.35, 103.82, "Asia/Singapore"), ("Sydney", "悉尼", -33.87, 151.21, "Australia/Sydney"),
+    ("London", "伦敦", 51.51, -0.13, "Europe/London"), ("Paris", "巴黎", 48.86, 2.35, "Europe/Paris"),
+    ("Berlin", "柏林", 52.52, 13.40, "Europe/Berlin"), ("New York", "纽约", 40.71, -74.01, "America/New_York"),
+    ("Chicago", "芝加哥", 41.88, -87.63, "America/Chicago"), ("Los Angeles", "洛杉矶", 34.05, -118.24, "America/Los_Angeles"),
+    ("San Francisco", "旧金山", 37.77, -122.42, "America/Los_Angeles"), ("Seattle", "西雅图", 47.61, -122.33, "America/Los_Angeles"),
+    ("Vancouver", "温哥华", 49.28, -123.12, "America/Vancouver"), ("Toronto", "多伦多", 43.65, -79.38, "America/Toronto"),
 ]
+
+/// 快捷键的显示名；没设置时给一句提示。
+private func hotkeyName() -> String {
+    D.integer(forKey: "hkMods") == 0 ? L("Not set", "未设置") : D.string(forKey: "hkName") ?? ""
+}
 
 // MARK: 设置窗口
 
@@ -311,6 +316,7 @@ final class Settings: NSObject, NSWindowDelegate, CLLocationManagerDelegate {
     private var solar = NSView(), custom = NSView(), zoneSection = NSView()
     private let hotkey = NSButton(title: "", target: nil, action: nil)
     private var monitor: Any?
+    private let zone = NSPopUpButton()
     private var loc: CLLocationManager?, locStatus = ""
     private var switches: [(key: String, view: NSSwitch, dependents: [NSView])] = []
 
@@ -331,6 +337,19 @@ final class Settings: NSObject, NSWindowDelegate, CLLocationManagerDelegate {
     }
 
     func windowDidResignKey(_: Notification) { stopRecording() }
+
+    var selectedTab: Int {
+        get { tabs.selectedTabViewItemIndex }
+        set { tabs.selectedTabViewItemIndex = newValue }
+    }
+
+    /// 换语言时旧窗口直接丢弃（不走"关窗即退出"）。
+    func discard() {
+        stopRecording()
+        loc = nil
+        window.delegate = nil
+        window.orderOut(nil)
+    }
 
     func windowWillClose(_: Notification) {
         stopRecording()
@@ -365,12 +384,13 @@ final class Settings: NSObject, NSWindowDelegate, CLLocationManagerDelegate {
         let status = NSStackView()
         status.orientation = .horizontal
         status.addView(stack(.horizontal, [badge, stack(.vertical, [statusTitle, statusSub], 3)], 12), in: .leading)
-        status.addView(on(NSButton(title: "立即切换", target: nil, action: nil)) { _ in setDark(!isDark) }, in: .trailing)
+        status.addView(on(NSButton(title: L("Switch Now", "立即切换"), target: nil, action: nil)) { _ in setDark(!isDark) }, in: .trailing)
         status.edgeInsets = NSEdgeInsets(top: 14, left: 14, bottom: 14, right: 14)
 
-        let zone = NSPopUpButton()
-        zone.addItems(withTitles: ["系统时区"] + TimeZone.knownTimeZoneIdentifiers)
-        bindD(zone, .selectedValue, "tz")
+        zone.addItems(withTitles: [L("System Time Zone", "系统时区")] + TimeZone.knownTimeZoneIdentifiers)
+        on(zone) { p in
+            if p.indexOfSelectedItem == 0 { D.removeObject(forKey: "tz") } else { D.set(p.titleOfSelectedItem, forKey: "tz") }
+        }
         zone.widthAnchor.constraint(equalToConstant: 190).isActive = true
 
         func offset(_ key: String, _ text: NSTextField) -> NSView {
@@ -389,48 +409,50 @@ final class Settings: NSObject, NSWindowDelegate, CLLocationManagerDelegate {
             return f
         }
         let city = NSPopUpButton(frame: .zero, pullsDown: true)
-        city.addItems(withTitles: ["选择城市"] + cities.map { $0.name })
+        city.addItems(withTitles: [L("Choose City", "选择城市")] + cities.map { L($0.en, $0.zh) })
         on(city) { [unowned self] p in
             let i = p.indexOfSelectedItem - 1
             guard cities.indices.contains(i) else { return }
             D.set(cities[i].lat, forKey: "lat"); D.set(cities[i].lon, forKey: "lon")
             D.set(cities[i].zone, forKey: "tz")  // 时间也按这座城市的时区显示
-            self.locDone("已设为" + cities[i].name)
+            self.locDone(L("Set to " + cities[i].en, "已设为" + cities[i].zh))
         }
-        locNote.lineBreakMode = .byTruncatingTail
+        locNote.lineBreakMode = .byWordWrapping
+        locNote.maximumNumberOfLines = 2
+        locNote.preferredMaxLayoutWidth = 190
         locNote.widthAnchor.constraint(equalToConstant: 190).isActive = true
         for l in [modeNote] {
             l.font = .systemFont(ofSize: 11); l.textColor = .secondaryLabelColor; l.isSelectable = false
         }
 
         // 每种方式只显示自己用得到的选项。
-        let modes = section("切换方式", [row("自动切换", nil, segmented(["日出日落", "自定义时间", "手动"], "mode"))])
+        let modes = section(L("Mode", "切换方式"), [row(L("Schedule", "自动切换"), nil, segmented([L("Sunrise / Sunset", "日出日落"), L("Custom", "自定义时间"), L("Manual", "手动")], "mode"))])
         modes.addArrangedSubview(modeNote)
         modeNote.widthAnchor.constraint(equalTo: modes.widthAnchor, constant: -12).isActive = true
-        solar = section("日出日落", [
-            row("位置", locNote, stack(.horizontal, [city, on(NSButton(title: "定位", target: nil, action: nil)) { [unowned self] _ in self.locate() }], 6)),
-            row("经纬度", note("也可以手动填写"), stack(.horizontal, [coordinate("lat", "纬度"), coordinate("lon", "经度")], 6)),
-            row("日出时转为浅色", riseNote, offset("riseOff", riseOff)),
-            row("日落时转为深色", setNote, offset("setOff", setOff)),
+        solar = section(L("Sunrise & Sunset", "日出日落"), [
+            row(L("Location", "位置"), locNote, stack(.horizontal, [city, on(NSButton(title: L("Locate", "定位"), target: nil, action: nil)) { [unowned self] _ in self.locate() }], 6)),
+            row(L("Coordinates", "经纬度"), note(L("Or type them in", "也可以手动填写")), stack(.horizontal, [coordinate("lat", L("Lat", "纬度")), coordinate("lon", L("Lon", "经度"))], 6)),
+            row(L("Light at sunrise", "日出时转为浅色"), riseNote, offset("riseOff", riseOff)),
+            row(L("Dark at sunset", "日落时转为深色"), setNote, offset("setOff", setOff)),
         ])
-        custom = section("自定义时间", [
-            row("转为浅色", nil, timePicker("lightTime")),
-            row("转为深色", nil, timePicker("darkTime")),
+        custom = section(L("Custom Times", "自定义时间"), [
+            row(L("Switch to light", "转为浅色"), nil, timePicker("lightTime")),
+            row(L("Switch to dark", "转为深色"), nil, timePicker("darkTime")),
         ])
-        zoneSection = section("时区", [row("时区", zoneNote, zone)], footer: "时间按所选时区显示和计算，不会改动系统时区。")
-        return pane("日程", "clock", [section(nil, [status]), modes, solar, custom, zoneSection])
+        zoneSection = section(L("Time Zone", "时区"), [row(L("Time zone", "时区"), zoneNote, zone)], footer: L("Times are shown and calculated in this time zone. Your system time zone is not changed.", "时间按所选时区显示和计算，不会改动系统时区。"))
+        return pane(L("Schedule", "日程"), "clock", [section(nil, [status]), modes, solar, custom, zoneSection])
     }
 
     private func weatherPane() -> NSTabViewItem {
-        let level = segmented(["多云", "阴天", "阴沉"], "level"), unit = segmented(["°C", "°F"], "fahrenheit")
-        return pane("天气", "cloud.sun", [
+        let level = segmented([L("Cloudy", "多云"), L("Overcast", "阴天"), L("Gloomy", "阴沉")], "level"), unit = segmented(["°C", "°F"], "fahrenheit")
+        return pane(L("Weather", "天气"), "cloud.sun", [
             section(nil, [
-                row("阴天提前转为深色", note("云层够厚时，当天提早进入深色"), toggle("weather", [level, unit])),
-                row("灵敏度", note("云量达到 70% / 85% / 95% 时触发"), level),
-                row("温度单位", nil, unit),
+                row(L("Go dark early on overcast days", "阴天提前转为深色"), note(L("When cloud stays thick until sunset", "云层够厚时，当天提早进入深色")), toggle("weather", [level, unit])),
+                row(L("Sensitivity", "灵敏度"), note(L("Cloud cover of 70% / 85% / 95%", "云量达到 70% / 85% / 95% 时触发")), level),
+                row(L("Temperature unit", "温度单位"), nil, unit),
             ]),
-            section("今天", [row("预报", forecastNote, forecastVerdict)],
-                    footer: "数据来自 Open-Meteo：每天只请求一次，只发送精确到约 1 公里的坐标。每天最多提前一次，不会来回跳。"),
+            section(L("Today", "今天"), [row(L("Forecast", "预报"), forecastNote, forecastVerdict)],
+                    footer: L("Data from Open-Meteo: one request a day, sending only coordinates rounded to about 1 km. Dark mode starts early at most once a day and never flips back.", "数据来自 Open-Meteo：每天只请求一次，只发送精确到约 1 公里的坐标。每天最多提前一次，不会来回跳。")),
         ])
     }
 
@@ -445,23 +467,23 @@ final class Settings: NSObject, NSWindowDelegate, CLLocationManagerDelegate {
             Note.post(Note.preview, String(Int(k)))  // 色温由常驻进程负责：请它预览 3 秒
         }
         let head = NSStackView()
-        head.addView(label("色温"), in: .leading)
+        head.addView(label(L("Colour temperature", "色温")), in: .leading)
         head.addView(kelvin, in: .trailing)
         let ends = NSStackView()
-        ends.addView(note("烛光 1900K"), in: .leading)
-        ends.addView(note("日光 6500K"), in: .trailing)
+        ends.addView(note(L("Candle 1900K", "烛光 1900K")), in: .leading)
+        ends.addView(note(L("Daylight 6500K", "日光 6500K")), in: .trailing)
         let temperature = stack(.vertical, [head, slider, ends], 6)
         temperature.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
         for v in [head, slider, ends] as [NSView] {
             v.widthAnchor.constraint(equalTo: temperature.widthAnchor, constant: -28).isActive = true
         }
-        let start = segmented(["日落", "定时", "全天"], "warmMode")
-        return pane("暖色", "sun.dust", [
+        let start = segmented([L("Sunset", "日落"), L("Scheduled", "定时"), L("All Day", "全天")], "warmMode")
+        return pane(L("Warmth", "暖色"), "sun.dust", [
             section(nil, [
-                row("暖色屏幕", note("降低色温，减少夜间蓝光"), toggle("warm", [slider, start, warmTime])),
+                row(L("Evening Warmth", "暖色屏幕"), note(L("Warmer colours, less blue light at night", "降低色温，减少夜间蓝光")), toggle("warm", [slider, start, warmTime])),
                 temperature,
-                row("开始时间", nil, stack(.horizontal, [warmTime, start], 8)),
-            ], footer: "日出时自动恢复，起止各有 30 分钟渐变。生效期间会暂时接管 Night Shift，结束后原样交还。"),
+                row(L("Starts", "开始时间"), nil, stack(.horizontal, [warmTime, start], 8)),
+            ], footer: L("Resets at sunrise, with a 30-minute fade in and out. Night Shift is paused while this is active and handed back afterwards.", "日出时自动恢复，起止各有 30 分钟渐变。生效期间会暂时接管 Night Shift，结束后原样交还。")),
         ])
     }
 
@@ -471,19 +493,19 @@ final class Settings: NSObject, NSWindowDelegate, CLLocationManagerDelegate {
             v.alignment = .centerX
             return v
         }
-        let pair = stack(.horizontal, [captioned(thumbLight, "浅色外观"), captioned(thumbDark, "深色外观")], 12)
+        let pair = stack(.horizontal, [captioned(thumbLight, L("Light appearance", "浅色外观")), captioned(thumbDark, L("Dark appearance", "深色外观"))], 12)
         pair.alignment = .top
         pair.edgeInsets = NSEdgeInsets(top: 14, left: 14, bottom: 12, right: 14)
-        return pane("壁纸", "photo", [
+        return pane(L("Wallpaper", "壁纸"), "photo", [
             section(nil, [
-                row("随外观更换壁纸", note("所有显示器一起更换"), toggle("wall", [thumbLight, thumbDark])),
+                row(L("Change wallpaper with appearance", "随外观更换壁纸"), note(L("On every display", "所有显示器一起更换")), toggle("wall", [thumbLight, thumbDark])),
                 pair,
             ]),
         ])
     }
 
     private func generalPane() -> NSTabViewItem {
-        hotkey.title = D.string(forKey: "hkName") ?? ""
+        hotkey.title = hotkeyName()
         on(hotkey) { [unowned self] _ in self.monitor == nil ? self.record() : self.stopRecording() }
         let login = on(NSSwitch()) { s in
             let want = s.state == .on
@@ -495,19 +517,24 @@ final class Settings: NSObject, NSWindowDelegate, CLLocationManagerDelegate {
         }
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
 
+        let language = NSSegmentedControl(labels: ["English", "中文"], trackingMode: .selectOne, target: nil, action: nil)
+        language.selectedSegment = zh ? 1 : 0
+        on(language) { D.set($0.selectedSegment == 1 ? "zh" : "en", forKey: "lang") }  // 设置进程发现语言变了会重建窗口
+
         let icon = NSImageView(image: NSApp.applicationIconImage)
         icon.widthAnchor.constraint(equalToConstant: 44).isActive = true
         icon.heightAnchor.constraint(equalToConstant: 44).isActive = true
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
         let about = NSStackView()
-        about.addView(stack(.horizontal, [icon, stack(.vertical, [label("Gloam", 14, .semibold), note("版本 \(version) · 极简的自动深浅色工具")], 3)], 12), in: .leading)
-        about.addView(on(NSButton(title: "退出 Gloam", target: nil, action: nil)) { _ in Note.post(Note.quit); exit(0) }, in: .trailing)
+        about.addView(stack(.horizontal, [icon, stack(.vertical, [label("Gloam", 14, .semibold), note(L("Version \(version) · Automatic light / dark mode", "版本 \(version) · 极简的自动深浅色工具"))], 3)], 12), in: .leading)
+        about.addView(on(NSButton(title: L("Quit Gloam", "退出 Gloam"), target: nil, action: nil)) { _ in Note.post(Note.quit); exit(0) }, in: .trailing)
         about.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
-        return pane("通用", "gearshape", [
+        return pane(L("General", "通用"), "gearshape", [
             section(nil, [
-                row("切换外观快捷键", note("在任何应用里按下即可切换"), hotkey),
-                row("登录时启动", nil, login),
-                row("显示菜单栏图标", note("关闭后常驻内存最低；再次打开 Gloam 即可进入设置"), toggle("showIcon")),
+                row(L("Toggle appearance hotkey", "切换外观快捷键"), note(L("Works in any app", "在任何应用里按下即可切换")), hotkey),
+                row(L("Launch at login", "登录时启动"), nil, login),
+                row(L("Show menu bar icon", "显示菜单栏图标"), note(L("Off saves the most memory. Open Gloam again for settings.", "关闭后常驻内存最低；再次打开 Gloam 即可进入设置")), toggle("showIcon")),
+                row(L("Language", "语言"), nil, language),
             ]),
             section(nil, [about]),
         ])
@@ -523,31 +550,32 @@ final class Settings: NSObject, NSWindowDelegate, CLLocationManagerDelegate {
 
         badge.layer?.backgroundColor = (dark ? NSColor.systemIndigo : NSColor.systemOrange).cgColor
         badgeIcon.image = symbol(dark ? "moon.stars.fill" : "sun.max.fill", 20, .medium)
-        statusTitle.stringValue = dark ? "当前为深色外观" : "当前为浅色外观"
+        statusTitle.stringValue = dark ? L("Dark appearance is on", "当前为深色外观") : L("Light appearance is on", "当前为浅色外观")
         statusSub.stringValue = nextSwitch(now)
-        modeNote.stringValue = ["每天按所在位置的日出、日落时间切换，时间会随日期自动变化。", "每天在固定的时间切换。",
-                                "不自动切换，只用菜单栏图标或快捷键手动切换。"][min(2, max(0, mode))]
+        modeNote.stringValue = [L("Switches at sunrise and sunset for your location. Times change with the seasons.", "每天按所在位置的日出、日落时间切换，时间会随日期自动变化。"), L("Switches at the same fixed times every day.", "每天在固定的时间切换。"),
+                                L("No automatic switching. Use the menu bar icon or the hotkey.", "不自动切换，只用菜单栏图标或快捷键手动切换。")][min(2, max(0, mode))]
 
-        zoneNote.stringValue = "该时区现在 " + f.string(from: now)
+        if let tz = D.string(forKey: "tz"), zone.itemTitles.contains(tz) { zone.selectItem(withTitle: tz) } else { zone.selectItem(at: 0) }
+        zoneNote.stringValue = L("Now ", "该时区现在 ") + f.string(from: now) + L(" there", "")
         let located = coord() != nil, today = schedule(cal.startOfDay(for: now))
-        riseNote.stringValue = today.map { "今天 " + f.string(from: $0.light) } ?? "设置位置后生效"
-        setNote.stringValue = today.map { "今天 " + f.string(from: $0.dark) } ?? "设置位置后生效"
+        riseNote.stringValue = today.map { L("Today ", "今天 ") + f.string(from: $0.light) } ?? L("Needs a location", "设置位置后生效")
+        setNote.stringValue = today.map { L("Today ", "今天 ") + f.string(from: $0.dark) } ?? L("Needs a location", "设置位置后生效")
         for (key, text) in [("riseOff", riseOff), ("setOff", setOff)] {
             let m = D.integer(forKey: key)
-            text.stringValue = m == 0 ? "准时" : m < 0 ? "提前 \(-m) 分钟" : "延后 \(m) 分钟"
+            text.stringValue = m == 0 ? L("On time", "准时") : m < 0 ? L("\(-m) min early", "提前 \(-m) 分钟") : L("\(m) min late", "延后 \(m) 分钟")
         }
-        locNote.stringValue = !locStatus.isEmpty ? locStatus : located ? "只在本机用来计算" : "选一个城市，或点定位"
+        locNote.stringValue = !locStatus.isEmpty ? locStatus : located ? L("Used only on this Mac", "只在本机用来计算") : L("Choose a city or press Locate", "选一个城市，或点定位")
         solar.isHidden = mode != 0
         custom.isHidden = mode != 1
         zoneSection.isHidden = mode == 2
 
         if !D.bool(forKey: "weather") {
-            forecastNote.stringValue = "未开启"; forecastVerdict.stringValue = ""
+            forecastNote.stringValue = L("Off", "未开启"); forecastVerdict.stringValue = ""
         } else if let line = weatherLine(now) {
             forecastNote.stringValue = line
-            forecastVerdict.stringValue = today.flatMap { weatherDark(now, $0.light, $0.dark) }.map { f.string(from: $0) + " 起提前转深色" } ?? "今天不提前"
+            forecastVerdict.stringValue = today.flatMap { weatherDark(now, $0.light, $0.dark) }.map { L("Dark early from ", "") + f.string(from: $0) + L("", " 起提前转深色") } ?? L("No early switch today", "今天不提前")
         } else {
-            forecastNote.stringValue = located ? "正在获取…" : "需要先在「日程」里设置位置"; forecastVerdict.stringValue = ""
+            forecastNote.stringValue = located ? L("Fetching…", "正在获取…") : L("Set a location in Schedule first", "需要先在「日程」里设置位置"); forecastVerdict.stringValue = ""
         }
 
         let k = D.double(forKey: "kelvin")
@@ -566,9 +594,9 @@ final class Settings: NSObject, NSWindowDelegate, CLLocationManagerDelegate {
         tabs.fit(animate: animate)
     }
 
-    // MARK: 定位（只在用户点"定位"时取一次，精确到约 1 公里）
+    // MARK: 定位（只在用户点L("Locate", "定位")时取一次，精确到约 1 公里）
 
-    /// 先确认授权，再取一次位置；每一步的结果都写进 locStatus 显示在"位置"那一行。
+    /// 先确认授权，再取一次位置；每一步的结果都写进 locStatus 显示在L("Location", "位置")那一行。
     private func locate() {
         NSObject.cancelPreviousPerformRequests(withTarget: self, selector: #selector(authTimeout), object: nil)
         let m = CLLocationManager()
@@ -582,7 +610,7 @@ final class Settings: NSObject, NSWindowDelegate, CLLocationManagerDelegate {
     private func proceed(_ m: CLLocationManager) {
         switch m.authorizationStatus {
         case .notDetermined:
-            locStatus = "请在系统弹窗里允许定位"
+            locStatus = L("Allow location in the system prompt", "请在系统弹窗里允许定位")
             m.requestWhenInUseAuthorization()  // 用户选择后会回调 didChangeAuthorization
             m.requestLocation()                // macOS 上要真正请求一次位置，授权框才会弹出
             perform(#selector(authTimeout), with: nil, afterDelay: 120)
@@ -591,14 +619,14 @@ final class Settings: NSObject, NSWindowDelegate, CLLocationManagerDelegate {
             DispatchQueue.global().async {
                 let enabled = CLLocationManager.locationServicesEnabled()
                 DispatchQueue.main.async {
-                    self.locDone(enabled ? "没有定位权限，请在系统设置里允许" : "系统定位服务未开启")
+                    self.locDone(enabled ? L("No permission. Allow it in System Settings.", "没有定位权限，请在系统设置里允许") : L("Location Services are off", "系统定位服务未开启"))
                     if let u = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices") {
                         NSWorkspace.shared.open(u)
                     }
                 }
             }
         default:
-            locStatus = "正在定位…"
+            locStatus = L("Locating…", "正在定位…")
             m.requestLocation()
         }
         refresh()
@@ -613,7 +641,7 @@ final class Settings: NSObject, NSWindowDelegate, CLLocationManagerDelegate {
         guard let c = l.last?.coordinate else { return }
         D.set((c.latitude * 100).rounded() / 100, forKey: "lat")
         D.set((c.longitude * 100).rounded() / 100, forKey: "lon")
-        locDone("已定位")
+        locDone(L("Located", "已定位"))
     }
 
     func locationManager(_: CLLocationManager, didFailWithError e: Error) {
@@ -622,12 +650,12 @@ final class Settings: NSObject, NSWindowDelegate, CLLocationManagerDelegate {
             if m.authorizationStatus != .notDetermined { proceed(m) }  // 还在等用户回答授权框时先不管
             return
         }
-        locDone("定位失败，请确认 Wi-Fi 已打开")
+        locDone(L("Couldn't locate. Is Wi-Fi on?", "定位失败，请确认 Wi-Fi 已打开"))
     }
 
     /// 授权框两分钟没有结果（被忽略或没弹出来）就结束等待，免得状态一直挂着。
     @objc private func authTimeout() {
-        if loc?.authorizationStatus == .notDetermined { locDone("没有收到授权结果，可以直接选城市") }
+        if loc?.authorizationStatus == .notDetermined { locDone(L("No answer to the prompt. Choose a city instead.", "没有收到授权结果，可以直接选城市")) }
     }
 
     private func locDone(_ s: String) {
@@ -641,11 +669,11 @@ final class Settings: NSObject, NSWindowDelegate, CLLocationManagerDelegate {
 
     /// 开始录制：下一次带修饰键的按键成为新快捷键。录制期间的监听器在 stopRecording() 里一定会被移除。
     private func record() {
-        hotkey.title = "按下组合键…（Esc 取消，⌫ 清除）"
+        hotkey.title = L("Press a shortcut… (Esc cancels, ⌫ clears)", "按下组合键…（Esc 取消，⌫ 清除）")
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [unowned self] e in
             let f = e.modifierFlags
             if e.keyCode == UInt16(kVK_Delete) {
-                D.set(0, forKey: "hkMods"); D.set("未设置", forKey: "hkName")
+                D.set(0, forKey: "hkMods"); D.set("", forKey: "hkName")
             } else if e.keyCode != UInt16(kVK_Escape) {
                 guard !f.intersection([.command, .option, .control]).isEmpty else { return nil }
                 var m = 0, s = ""
@@ -663,7 +691,7 @@ final class Settings: NSObject, NSWindowDelegate, CLLocationManagerDelegate {
 
     private func stopRecording() {
         if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
-        hotkey.title = D.string(forKey: "hkName") ?? ""
+        hotkey.title = hotkeyName()
     }
 }
 
@@ -671,17 +699,10 @@ final class Settings: NSObject, NSWindowDelegate, CLLocationManagerDelegate {
 
 final class SettingsApp: NSObject, NSApplicationDelegate {
     private var settings: Settings!
+    private var language = zh
 
     func applicationDidFinishLaunching(_: Notification) {
-        // 没有菜单栏的后台应用也需要主菜单，否则输入框里 ⌘C/⌘V、⌘W 都不起作用。
-        let main = NSMenu(), edit = NSMenu(title: "编辑")
-        for (title, sel, key) in [("关闭窗口", #selector(NSWindow.performClose(_:)), "w"), ("剪切", #selector(NSText.cut(_:)), "x"),
-                                  ("拷贝", #selector(NSText.copy(_:)), "c"), ("粘贴", #selector(NSText.paste(_:)), "v"),
-                                  ("全选", #selector(NSText.selectAll(_:)), "a")] {
-            edit.addItem(withTitle: title, action: sel, keyEquivalent: key)
-        }
-        main.addItem(withTitle: "编辑", action: nil, keyEquivalent: "").submenu = edit
-        NSApp.mainMenu = main
+        buildMenu()
 
         settings = Settings()
         NotificationCenter.default.addObserver(self, selector: #selector(changed), name: UserDefaults.didChangeNotification, object: nil)
@@ -690,6 +711,18 @@ final class SettingsApp: NSObject, NSApplicationDelegate {
         Note.observe(Note.show, self, #selector(show))
         Note.observe(Note.quit, self, #selector(quit))
         show()
+    }
+
+    private func buildMenu() {
+        // 没有菜单栏的后台应用也需要主菜单，否则输入框里 ⌘C/⌘V、⌘W 都不起作用。
+        let main = NSMenu(), edit = NSMenu(title: L("Edit", "编辑"))
+        for (title, sel, key) in [(L("Close Window", "关闭窗口"), #selector(NSWindow.performClose(_:)), "w"), (L("Cut", "剪切"), #selector(NSText.cut(_:)), "x"),
+                                  (L("Copy", "拷贝"), #selector(NSText.copy(_:)), "c"), (L("Paste", "粘贴"), #selector(NSText.paste(_:)), "v"),
+                                  (L("Select All", "全选"), #selector(NSText.selectAll(_:)), "a")] {
+            edit.addItem(withTitle: title, action: sel, keyEquivalent: key)
+        }
+        main.addItem(withTitle: L("Edit", "编辑"), action: nil, keyEquivalent: "").submenu = edit
+        NSApp.mainMenu = main
     }
 
     func applicationShouldHandleReopen(_: NSApplication, hasVisibleWindows _: Bool) -> Bool { show(); return false }
@@ -708,6 +741,17 @@ final class SettingsApp: NSObject, NSApplicationDelegate {
     @objc private func settled() {
         CFPreferencesAppSynchronize(kCFPreferencesCurrentApplication)
         Note.post(Note.changed)
+        if zh != language {
+            // 语言变了：在原位置、原分页重建整个窗口。
+            language = zh
+            let old = settings!, frame = old.window.frame, tab = old.selectedTab
+            old.discard()
+            buildMenu()
+            settings = Settings()
+            settings.selectedTab = tab
+            settings.window.setFrameTopLeftPoint(NSPoint(x: frame.minX, y: frame.maxY))
+            show()
+        }
         // 常驻进程收到通知后可能会切外观、更新"下次切换"等，稍后再刷新一次界面。
         settings.refresh()
         NSObject.cancelPreviousPerformRequests(withTarget: self, selector: #selector(refreshLater), object: nil)
@@ -739,11 +783,11 @@ func runSettings() -> Never {
 }
 
 func printPermissions() {
-    let names = ["未询问", "受限", "已拒绝", "已允许", "已允许（使用期间）"]
+    let names = [L("not asked", "未询问"), L("restricted", "受限"), L("denied", "已拒绝"), L("allowed", "已允许"), L("allowed (when in use)", "已允许（使用期间）")]
     let a = Int(CLLocationManager().authorizationStatus.rawValue)
-    print("定位授权:", names.indices.contains(a) ? names[a] : "未知(\(a))")
-    print("系统定位服务:", CLLocationManager.locationServicesEnabled() ? "开" : "关")
-    let l = ["未注册", "已启用", "需要在系统设置里批准", "未找到"], st = SMAppService.mainApp.status.rawValue
-    print("登录时启动:", l.indices.contains(st) ? l[st] : "未知(\(st))")
-    print("已保存位置:", coord() == nil ? "无" : "有", "· 天气联网:", D.bool(forKey: "weather") ? "开" : "关")
+    print(L("Location permission:", "定位授权:"), names.indices.contains(a) ? names[a] : "?(\(a))")
+    print(L("System Location Services:", "系统定位服务:"), CLLocationManager.locationServicesEnabled() ? L("on", "开") : L("off", "关"))
+    let l = [L("not registered", "未注册"), L("enabled", "已启用"), L("needs approval in System Settings", "需要在系统设置里批准"), L("not found", "未找到")], st = SMAppService.mainApp.status.rawValue
+    print(L("Launch at login:", "登录时启动:"), l.indices.contains(st) ? l[st] : "?(\(st))")
+    print(L("Saved location:", "已保存位置:"), coord() == nil ? L("no", "无") : L("yes", "有"), L("· weather requests:", "· 天气联网:"), D.bool(forKey: "weather") ? L("on", "开") : L("off", "关"))
 }

@@ -3,6 +3,11 @@ import Carbon.HIToolbox
 import Cocoa
 
 let D = UserDefaults.standard
+
+/// 界面语言：默认英文，可在设置里切换为中文。所有界面文字都写成 L("English", "中文")。
+var zh: Bool { D.string(forKey: "lang") == "zh" }
+func L(_ en: String, _ cn: String) -> String { zh ? cn : en }
+
 /// 日程使用的日历：默认系统时区，可在设置里指定别的时区（系统时区本身不动）。
 var cal: Calendar {
     var c = Calendar.current
@@ -214,21 +219,22 @@ func weatherLine(_ now: Date) -> String? {
           let i = ts.lastIndex(where: { $0 <= now.timeIntervalSince1970 }) else { return nil }
     func v(_ k: String) -> Double { fc[k].flatMap { $0.indices.contains(i) ? $0[i] : nil } ?? 0 }
     let f = D.integer(forKey: "fahrenheit") == 1, c = v("temperature_2m")
-    return String(format: "云 %.0f%% · 雨 %.0f%% · UV %.0f · %.0f%@",
+    return String(format: L("Cloud %.0f%% · Rain %.0f%% · UV %.0f · %.0f%@", "云 %.0f%% · 雨 %.0f%% · UV %.0f · %.0f%@"),
                   v("cloud_cover"), v("precipitation_probability"), v("uv_index"), (f ? c * 9 / 5 + 32 : c).rounded() + 0, f ? "°F" : "°C")
 }
 
 /// 状态说明："19:00 转为深色"，或者为什么现在不会自动切换。
 func nextSwitch(_ now: Date) -> String {
     let dark = isDark, mode = D.integer(forKey: "mode")
-    if mode == 2 { return "手动模式，不会自动切换" }
-    if mode == 0, coord() == nil { return "还没有位置，暂不自动切换" }
+    if mode == 2 { return L("Manual mode, no automatic switching", "手动模式，不会自动切换") }
+    if mode == 0, coord() == nil { return L("No location yet, not switching", "还没有位置，暂不自动切换") }
     guard let n = events(now).first(where: { $0.t > now && $0.dark != dark }) else { return "" }
     let f = DateFormatter()
     f.timeStyle = .short
     f.timeZone = cal.timeZone
-    var s = "\(f.string(from: n.t)) 转为\(n.dark ? "深色" : "浅色")"
-    if cal.timeZone != TimeZone.current, let z = cal.timeZone.localizedName(for: .generic, locale: Locale(identifier: "zh_CN")) {
+    let time = f.string(from: n.t)
+    var s = zh ? "\(time) 转为\(n.dark ? "深色" : "浅色")" : "\(n.dark ? "Dark" : "Light") at \(time)"
+    if cal.timeZone != TimeZone.current, let z = cal.timeZone.localizedName(for: .generic, locale: Locale(identifier: zh ? "zh_CN" : "en_US")) {
         s += " · " + z
     }
     return s
@@ -512,11 +518,11 @@ final class Agent: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 顶部状态：图标 + 当前外观 + 下一次切换 / 天气 / 色温
         var lines = [nextSwitch(now)]
         if let w = weatherLine(now) { lines.append(w) }
-        if currentK < 6500 { lines.append("暖色 \(Int(currentK))K") }
+        if currentK < 6500 { lines.append(L("Warmth", "暖色") + " \(Int(currentK))K") }
         let icon = NSImageView(image: symbol(dark ? "moon.stars.fill" : "sun.max.fill", 20, .medium) ?? NSImage())
         icon.contentTintColor = dark ? .systemIndigo : .systemOrange
         icon.widthAnchor.constraint(equalToConstant: 28).isActive = true
-        let title = NSTextField(labelWithString: dark ? "深色外观" : "浅色外观")
+        let title = NSTextField(labelWithString: dark ? L("Dark appearance", "深色外观") : L("Light appearance", "浅色外观"))
         title.font = .systemFont(ofSize: 13, weight: .semibold)
         let text = NSStackView(views: [title] + lines.filter { !$0.isEmpty }.map {
             let l = NSTextField(labelWithString: $0)
@@ -541,11 +547,11 @@ final class Agent: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         // 快捷键只写在标题里当提示：真正的响应由全局热键负责，这里不绑按键，免得同一次按键触发两回。
         let hint = D.integer(forKey: "hkMods") != 0 ? "　" + (D.string(forKey: "hkName") ?? "") : ""
-        _ = add((dark ? "切换为浅色" : "切换为深色") + hint, dark ? "sun.max" : "moon", #selector(toggle))
-        add("暖色屏幕", "sun.dust", #selector(toggleWarm)).state = D.bool(forKey: "warm") ? .on : .off
+        _ = add((dark ? L("Switch to Light", "切换为浅色") : L("Switch to Dark", "切换为深色")) + hint, dark ? "sun.max" : "moon", #selector(toggle))
+        add(L("Evening Warmth", "暖色屏幕"), "sun.dust", #selector(toggleWarm)).state = D.bool(forKey: "warm") ? .on : .off
         m.addItem(.separator())
-        _ = add("设置…", "gearshape", #selector(openSettings), ",")
-        _ = add("退出 Gloam", "power", #selector(quit), "q")
+        _ = add(L("Settings…", "设置…"), "gearshape", #selector(openSettings), ",")
+        _ = add(L("Quit Gloam", "退出 Gloam"), "power", #selector(quit), "q")
     }
 
     @objc func toggleWarm() { D.set(!D.bool(forKey: "warm"), forKey: "warm") }
@@ -591,7 +597,7 @@ var agent: Agent?
 // MARK: 入口
 
 D.register(defaults: [
-    "mode": 0, "tz": "系统时区", "riseOff": 0, "setOff": 0, "lightTime": hour(7), "darkTime": hour(19),
+    "lang": "en", "mode": 0, "riseOff": 0, "setOff": 0, "lightTime": hour(7), "darkTime": hour(19),
     "weather": false, "level": 1, "fahrenheit": 0,
     "warm": false, "kelvin": 3400, "warmMode": 0, "warmTime": hour(20),
     "wall": false, "showIcon": true, "hkCode": kVK_ANSI_D, "hkMods": cmdKey | optionKey | controlKey, "hkName": "⌃⌥⌘D",
@@ -604,10 +610,11 @@ if arguments.contains("--status") {
     let now = Date(), f = DateFormatter()
     f.dateFormat = "MM-dd HH:mm"
     f.timeZone = cal.timeZone
-    print("日程时区:", cal.timeZone.identifier)
-    print("位置:", coord().map { "\($0.lat), \($0.lon)" } ?? (D.integer(forKey: "mode") == 0 ? "未设置（日出日落模式下不会自动切换）" : "未设置"))
-    for e in events(now) { print(f.string(from: e.t), e.dark ? "深色" : "浅色", e.t <= now ? "" : "（未到）") }
-    print("当前外观:", isDark ? "深色" : "浅色", "· 色温:", Int(warmth(now).k), "K")
+    print(L("Schedule time zone:", "日程时区:"), cal.timeZone.identifier)
+    print(L("Location:", "位置:"), coord().map { "\($0.lat), \($0.lon)" }
+        ?? (D.integer(forKey: "mode") == 0 ? L("not set (no automatic switching in sunrise/sunset mode)", "未设置（日出日落模式下不会自动切换）") : L("not set", "未设置")))
+    for e in events(now) { print(f.string(from: e.t), e.dark ? L("dark", "深色") : L("light", "浅色"), e.t <= now ? "" : L("(upcoming)", "（未到）")) }
+    print(L("Appearance:", "当前外观:"), isDark ? L("dark", "深色") : L("light", "浅色"), L("· colour temperature:", "· 色温:"), Int(warmth(now).k), "K")
     exit(0)
 }
 
